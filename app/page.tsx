@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSession, signIn, signOut } from 'next-auth/react'
 
 const tools = [
   {
@@ -27,6 +28,7 @@ Schreibe auf Deutsch, SEO-optimiert mit natürlicher Keyword-Dichte.`
     description: 'Wöchentliche GBP Posts für mehr Sichtbarkeit',
     icon: '📱',
     fields: ['business', 'city', 'offer'],
+    canPostToGBP: true,
     prompt: (data: any) => `Schreibe einen Google Business Profil Post für ${data.business} in ${data.city}.
 
 Angebot/Thema: ${data.offer || 'Saisonales Angebot'}
@@ -156,14 +158,112 @@ Erstelle:
   },
 ]
 
+interface Business {
+  id: string
+  name: string
+  website?: string
+  address?: string
+  phone?: string
+  city?: string
+  neighborhoods?: string
+  services?: string
+  industry?: string
+  gbpLocationId?: string
+}
+
 export default function Home() {
+  const { data: session, status } = useSession()
   const [activeTool, setActiveTool] = useState(tools[0].id)
   const [formData, setFormData] = useState<Record<string, string>>({})
   const [result, setResult] = useState('')
   const [loading, setLoading] = useState(false)
+  const [scanning, setScanning] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [websiteUrl, setWebsiteUrl] = useState('')
+  const [businesses, setBusinesses] = useState<Business[]>([])
+  const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null)
+  const [showBusinessModal, setShowBusinessModal] = useState(false)
 
   const currentTool = tools.find(t => t.id === activeTool)!
+
+  useEffect(() => {
+    if (session) {
+      fetchBusinesses()
+    }
+  }, [session])
+
+  const fetchBusinesses = async () => {
+    try {
+      const res = await fetch('/api/businesses')
+      if (res.ok) {
+        const data = await res.json()
+        setBusinesses(data)
+        if (data.length > 0 && !selectedBusiness) {
+          setSelectedBusiness(data[0])
+          applyBusinessData(data[0])
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching businesses:', e)
+    }
+  }
+
+  const applyBusinessData = (business: Business) => {
+    setFormData({
+      business: business.name || '',
+      name: business.name || '',
+      city: business.city || '',
+      address: business.address || '',
+      phone: business.phone || '',
+      neighborhoods: business.neighborhoods || '',
+      services: business.services || '',
+      service: business.services?.split(',')[0]?.trim() || '',
+      industry: business.industry || ''
+    })
+  }
+
+  const scanWebsite = async () => {
+    if (!websiteUrl) return
+
+    setScanning(true)
+    try {
+      const res = await fetch('/api/scan-website', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: websiteUrl })
+      })
+
+      const data = await res.json()
+
+      if (data.success && data.data) {
+        setFormData(prev => ({
+          ...prev,
+          ...data.data,
+          business: data.data.name || prev.business,
+          service: data.data.services?.split(',')[0]?.trim() || prev.service
+        }))
+
+        // Save as business if logged in
+        if (session) {
+          const bizRes = await fetch('/api/businesses', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...data.data,
+              website: websiteUrl
+            })
+          })
+
+          if (bizRes.ok) {
+            fetchBusinesses()
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Scan error:', error)
+    }
+    setScanning(false)
+  }
 
   const handleGenerate = async () => {
     setLoading(true)
@@ -181,10 +281,34 @@ export default function Home() {
       const data = await response.json()
       setResult(data.content || data.error || 'Fehler beim Generieren')
     } catch (error) {
-      setResult('Fehler: API nicht erreichbar. Bitte API Key in .env.local konfigurieren.')
+      setResult('Fehler: API nicht erreichbar. Bitte API Key konfigurieren.')
     }
 
     setLoading(false)
+  }
+
+  const postToGBP = async () => {
+    if (!session || !selectedBusiness?.gbpLocationId || !result) return
+
+    try {
+      const res = await fetch('/api/gbp/post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          locationName: selectedBusiness.gbpLocationId,
+          content: result.split('\n\n')[0] // First variant
+        })
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        alert('Post erfolgreich zu GBP gesendet!')
+      } else {
+        alert('Fehler: ' + data.error)
+      }
+    } catch (error) {
+      alert('Fehler beim Posten')
+    }
   }
 
   const copyToClipboard = () => {
@@ -216,15 +340,98 @@ export default function Home() {
     <main className="min-h-screen">
       {/* Header */}
       <header className="border-b border-gray-800 bg-gray-900/50 backdrop-blur-lg sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold">
-            <span className="gradient-text">Local SEO</span> Generator
-          </h1>
-          <p className="text-gray-400 text-sm">7 KI-Tools für lokale Unternehmen</p>
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">
+              <span className="gradient-text">Local SEO</span> Generator
+            </h1>
+            <p className="text-gray-400 text-sm">7 KI-Tools für lokale Unternehmen</p>
+          </div>
+
+          <div className="flex items-center gap-4">
+            {status === 'loading' ? (
+              <div className="text-gray-400">...</div>
+            ) : session ? (
+              <div className="flex items-center gap-3">
+                {businesses.length > 0 && (
+                  <select
+                    value={selectedBusiness?.id || ''}
+                    onChange={(e) => {
+                      const biz = businesses.find(b => b.id === e.target.value)
+                      if (biz) {
+                        setSelectedBusiness(biz)
+                        applyBusinessData(biz)
+                      }
+                    }}
+                    className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm"
+                  >
+                    {businesses.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                )}
+                <img
+                  src={session.user?.image || ''}
+                  alt=""
+                  className="w-8 h-8 rounded-full"
+                />
+                <button
+                  onClick={() => signOut()}
+                  className="text-sm text-gray-400 hover:text-white"
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => signIn('google')}
+                className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg text-sm font-medium transition"
+              >
+                Mit Google anmelden
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* Website Scanner */}
+        <div className="bg-gray-900 rounded-2xl p-6 mb-8">
+          <h2 className="font-semibold mb-4 flex items-center gap-2">
+            🔍 Website Auto-Scan
+            <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">NEU</span>
+          </h2>
+          <div className="flex gap-4">
+            <input
+              type="text"
+              value={websiteUrl}
+              onChange={(e) => setWebsiteUrl(e.target.value)}
+              placeholder="https://deine-website.de"
+              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <button
+              onClick={scanWebsite}
+              disabled={scanning || !websiteUrl}
+              className="bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:cursor-not-allowed px-6 py-3 rounded-lg font-medium transition flex items-center gap-2"
+            >
+              {scanning ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Scanne...
+                </>
+              ) : (
+                'Website scannen'
+              )}
+            </button>
+          </div>
+          <p className="text-gray-500 text-sm mt-2">
+            Extrahiert automatisch: Firmenname, Adresse, Telefon, Services, Stadt
+          </p>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Sidebar - Tool Selection */}
           <div className="lg:col-span-1">
@@ -235,7 +442,6 @@ export default function Home() {
                   onClick={() => {
                     setActiveTool(tool.id)
                     setResult('')
-                    setFormData({})
                   }}
                   className={`w-full text-left p-3 rounded-xl transition ${
                     activeTool === tool.id
@@ -316,12 +522,22 @@ export default function Home() {
               <div className="bg-gray-900 rounded-2xl p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold">Ergebnis</h3>
-                  <button
-                    onClick={copyToClipboard}
-                    className="text-sm bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg transition"
-                  >
-                    {copied ? '✓ Kopiert!' : '📋 Kopieren'}
-                  </button>
+                  <div className="flex gap-2">
+                    {(currentTool as any).canPostToGBP && session && selectedBusiness?.gbpLocationId && (
+                      <button
+                        onClick={postToGBP}
+                        className="text-sm bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition flex items-center gap-2"
+                      >
+                        📱 Zu GBP posten
+                      </button>
+                    )}
+                    <button
+                      onClick={copyToClipboard}
+                      className="text-sm bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg transition"
+                    >
+                      {copied ? '✓ Kopiert!' : '📋 Kopieren'}
+                    </button>
+                  </div>
                 </div>
                 <div className="bg-gray-800 rounded-xl p-4 whitespace-pre-wrap text-gray-200 max-h-[600px] overflow-y-auto">
                   {result}
@@ -335,7 +551,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="border-t border-gray-800 mt-16 py-8">
         <div className="max-w-7xl mx-auto px-4 text-center text-gray-500 text-sm">
-          Local SEO Generator - Powered by AI
+          Local SEO Generator - Powered by DeepSeek AI
         </div>
       </footer>
     </main>
