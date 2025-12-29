@@ -8,22 +8,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Prompt ist erforderlich' }, { status: 400 })
     }
 
-    const apiKey = process.env.OPENAI_API_KEY
+    const apiKey = process.env.OPENROUTER_API_KEY
 
     if (!apiKey) {
       return NextResponse.json({
-        error: 'API Key nicht konfiguriert. Bitte OPENAI_API_KEY in .env.local setzen.'
+        error: 'API Key nicht konfiguriert. Bitte OPENROUTER_API_KEY in .env.local setzen.'
       }, { status: 500 })
     }
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://local-seo-tool.vercel.app',
+        'X-Title': 'Local SEO Generator'
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'deepseek/deepseek-v3.2-speciale',
         messages: [
           {
             role: 'system',
@@ -42,7 +44,7 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       const error = await response.json()
       return NextResponse.json({
-        error: `OpenAI API Fehler: ${error.error?.message || 'Unbekannter Fehler'}`
+        error: `API Fehler: ${error.error?.message || 'Unbekannter Fehler'}`
       }, { status: response.status })
     }
 
