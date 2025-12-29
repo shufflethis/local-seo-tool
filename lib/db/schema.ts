@@ -7,6 +7,14 @@ export const users = sqliteTable('users', {
   image: text('image'),
   googleAccessToken: text('google_access_token'),
   googleRefreshToken: text('google_refresh_token'),
+  // Subscription
+  subscriptionId: text('subscription_id'),
+  subscriptionStatus: text('subscription_status'), // 'active', 'cancelled', 'expired', 'trial'
+  subscriptionEndsAt: integer('subscription_ends_at', { mode: 'timestamp' }),
+  // Onboarding
+  onboardingCompleted: integer('onboarding_completed', { mode: 'boolean' }).default(false),
+  autoPostingEnabled: integer('auto_posting_enabled', { mode: 'boolean' }).default(true),
+  postFrequency: text('post_frequency').default('weekly'), // 'daily', 'weekly', 'biweekly'
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date())
 })
 

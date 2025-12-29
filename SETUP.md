@@ -138,6 +138,62 @@ npm run db:push
 - Automatische wöchentliche Posts (Cron Job um 9:00 Uhr)
 - Gespeicherte Businesses
 
+## 8. LemonSqueezy Setup (Payment)
+
+### 8.1 Account erstellen
+
+1. Gehe zu https://lemonsqueezy.com
+2. Erstelle einen Account
+3. Verifiziere deine E-Mail und Identität
+
+### 8.2 Store einrichten
+
+1. Gehe zu https://app.lemonsqueezy.com/settings/stores
+2. Deine Store ID steht in der URL
+
+### 8.3 Produkt erstellen
+
+1. Gehe zu "Products" > "New Product"
+2. Name: `Local SEO Pro`
+3. Preis: `5€` / Monat
+4. Subscription aktivieren
+5. Nach dem Speichern: Klicke auf das Produkt > "Variants"
+6. Kopiere die Variant ID
+
+### 8.4 API Key
+
+1. Gehe zu https://app.lemonsqueezy.com/settings/api
+2. Erstelle einen neuen API Key
+3. Kopiere in `.env.local`:
+   ```
+   LEMONSQUEEZY_API_KEY=your-api-key
+   LEMONSQUEEZY_STORE_ID=12345
+   LEMONSQUEEZY_VARIANT_ID=67890
+   ```
+
+### 8.5 Webhook einrichten
+
+1. Gehe zu "Settings" > "Webhooks"
+2. URL: `https://deine-app.vercel.app/api/webhooks/lemonsqueezy`
+3. Events auswählen:
+   - subscription_created
+   - subscription_updated
+   - subscription_cancelled
+   - subscription_expired
+4. Kopiere das Signing Secret in `.env.local`:
+   ```
+   LEMONSQUEEZY_WEBHOOK_SECRET=your-webhook-secret
+   ```
+
+## Kunden-Flow
+
+1. User besucht die App
+2. Login mit Google
+3. Website URL eingeben → Auto-Scan
+4. GBP verbinden (Google OAuth)
+5. 5€/Monat zahlen
+6. Fertig! Posts gehen jeden Montag automatisch raus
+
 ## Support
 
 Bei Fragen: Erstelle ein Issue auf GitHub
